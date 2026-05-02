@@ -492,14 +492,16 @@ function _startFirebase(){
       });
       if(_fbIniciado){ renderTabela(); renderDashboard(); }
     } else {
+      // Banco vazio — sobe dados iniciais automaticamente
       const obj={};
-      DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]=d; });
-      REF.set(obj);
-      REF_ID.set(43);
+      DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]={...d}; });
+      REF.set(obj); REF_ID.set(43);
     }
     _fbIniciado = true;
   });
   REF_ID.on('value', snap => { if(snap.val()) nextId = snap.val(); });
+  // Garante carregamento se banco vazio
+  setTimeout(()=>{ if(typeof carregarSeVazio==='function') carregarSeVazio(); }, 2000);
 }
 
 function initFirebase(){
@@ -522,12 +524,21 @@ function salvar(){
 
 function resetarDados(){
   if(confirm('⚠️ Isso vai apagar TODOS os dados e voltar ao original para TODOS os dispositivos.\nTem certeza?')){
+    if(!REF){alert('Firebase não conectado. Aguarde e tente de novo.');return;}
     const obj={};
-    DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]={...d}; });
-    REF.set(obj);
-    REF_ID.set(41);
-    alert('✅ Dados resetados! Todos os dispositivos serão atualizados.');
+    DEMANDAS_INICIAIS.forEach(d=>{obj[d.id]={...d};});
+    REF.set(obj).then(()=>{REF_ID.set(43);alert('✅ Dados carregados! A tabela será atualizada.');}).catch(e=>alert('Erro: '+e.message));
   }
+}
+
+function carregarSeVazio(){
+  if(!REF){setTimeout(carregarSeVazio,1000);return;}
+  REF.once('value').then(snap=>{
+    if(!snap.val()||Object.keys(snap.val()).length===0){
+      const obj={};DEMANDAS_INICIAIS.forEach(d=>{obj[d.id]={...d};});
+      REF.set(obj);REF_ID.set(43);
+    }
+  });
 }
 
 const today=()=>new Date().toISOString().slice(0,10);
@@ -927,7 +938,7 @@ function tentarLogin(){
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';
     sessionStorage.setItem('auth','1');
-    initFirebase();
+    if(!db) initFirebase(); // só inicia se ainda não iniciou
     renderDashboard();
   }else{
     const el=document.getElementById('login-erro');
@@ -939,12 +950,21 @@ function tentarLogin(){
 
 window.addEventListener('DOMContentLoaded', function(){
   document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
-  if(sessionStorage.getItem('auth')==='1'){
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app').style.display='block';
-    initFirebase();
-    renderDashboard();
+  // Sempre inicia o Firebase assim que a página carrega
+  // para garantir sincronização mesmo sem novo login
+  window._fbReadyCallback = function(){
+    _startFirebase();
+    if(sessionStorage.getItem('auth')==='1'){
+      document.getElementById('login-screen').style.display='none';
+      document.getElementById('app').style.display='block';
+      renderDashboard();
+    }
+  };
+  // Se Firebase já carregou, inicia imediatamente
+  if(window._fbLoaded){
+    window._fbReadyCallback();
   }
+  // Caso contrário, o callback já está registrado e será chamado quando carregara
 });
 </script>
 </div>
