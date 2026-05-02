@@ -1,4 +1,4 @@
-<!DOCTYPE htmla>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -490,9 +490,11 @@ function _startFirebase(){
         const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
         return ma<mb?-1:ma>mb?1:0;
       });
-      // Sempre renderiza dashboard e tabela quando dados chegam do Firebase
+      // Renderiza dashboard sempre; tabela só se a aba estiver ativa
       try{ renderDashboard(); }catch(e){}
-      try{ renderTabela(); }catch(e){}
+      const listaAtiva = document.getElementById('view-lista') && 
+                         document.getElementById('view-lista').classList.contains('active');
+      if(listaAtiva){ try{ renderTabela(); }catch(e){} }
     } else {
       // Banco vazio — sobe dados iniciais automaticamente
       const obj={};
@@ -555,7 +557,7 @@ function showTab(tab){
   document.getElementById('view-lista').classList.toggle('active',tab==='lista');
   document.getElementById('view-detalhe').style.display='none';
   if(tab==='dashboard')renderDashboard();
-  if(tab==='lista')renderTabela();
+  if(tab==='lista'){ renderTabela(); }
 }
 
 function renderCards(){
@@ -659,15 +661,20 @@ function renderDashboard() {
 }
 
 function renderTabela(){
-  const q=document.getElementById('busca').value.toLowerCase();
-  const fst=document.getElementById('f-status').value;
-  const ftp=document.getElementById('f-tipo').value;
-  const fpr=document.getElementById('f-prio').value;
+  const buscaEl=document.getElementById('busca');
+  const fstEl=document.getElementById('f-status');
+  const ftpEl=document.getElementById('f-tipo');
+  const fprEl=document.getElementById('f-prio');
+  const tbody=document.getElementById('tbody');
+  if(!tbody) return; // elemento não existe ainda
+  const q=buscaEl?buscaEl.value.toLowerCase():'';
+  const fst=fstEl?fstEl.value:'';
+  const ftp=ftpEl?ftpEl.value:'';
+  const fpr=fprEl?fprEl.value:'';
   let list=demandas.filter(d=>{
     const txt=(d.sei+d.sol+d.desc+(d.municipio||'')).toLowerCase();
     return txt.includes(q)&&(!fst||d.status===fst)&&(!ftp||d.tipo===ftp)&&(!fpr||d.prio===fpr);
   }).sort((a,b)=>{if(b.urgente!==a.urgente)return b.urgente-a.urgente;const ma=(a.municipio||"").toLowerCase(),mb=(b.municipio||"").toLowerCase();return ma<mb?-1:ma>mb?1:0;});
-  const tbody=document.getElementById('tbody');
   if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="8">Nenhuma demanda encontrada.</td></tr>';return;}
   tbody.innerHTML=list.map(d=>`
     <tr style="${d.urgente?'background:#fffbeb;':''}${d.resolvido?'opacity:.45;':''}">
