@@ -5,23 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOBRE — Gestão de Demandas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script>
-// Carrega Firebase de forma segura garantindo ordem correta
-(function(){
-  function loadScript(src, cb){
-    var s=document.createElement('script');
-    s.src=src; s.onload=cb;
-    document.head.appendChild(s);
-  }
-  window._fbLoaded=false;
-  loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js', function(){
-    loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js', function(){
-      window._fbLoaded=true;
-      if(window._fbReadyCallback) window._fbReadyCallback();
-    });
-  });
-})();
-</script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--azul:#1b3f72;--azul2:#2563a8;--verde:#10b981;--vermelho:#ef4444;--amarelo:#f59e0b;--roxo:#7c3aed;--cinza-bg:#f1f5f9;--borda:#dde3ec;--texto:#1a202c;--texto2:#64748b;--branco:#fff;}
@@ -458,86 +443,54 @@ const DEMANDAS_INICIAIS=[
   {id:41,sei:'00321017870/2025-51',tipo:'Laudo CBM',sol:'7ª Delegacia Seccional',municipio:'Teresina',desc:'7ª Delegacia Seccional - 11º DPC',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
   {id:42,sei:'00321005068/2026-08',tipo:'Laudo CBM',sol:'Delegacia de Polícia Civil',municipio:'José de Freitas',desc:'Delegacia de Polícia Civil',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]}
 ];
-// ── FIREBASE — SINCRONIZAÇÃO EM TEMPO REAL ──────────────
+// ── FIREBASE ──────────────────────────────────────────────
 let db, REF, REF_ID;
 let demandas = DEMANDAS_INICIAIS.map(d=>({...d}));
 let nextId = 43, editId = null, detalheId = null;
 
-function _atualizarTela(){
-  try{ renderDashboard(); }catch(e){}
-  // Sempre popula o tbody, independente de qual aba está visível
-  try{
-    const tbody = document.getElementById('tbody');
-    if(!tbody) return;
-    const list = demandas.slice().sort((a,b)=>{
-      if(b.urgente!==a.urgente) return b.urgente-a.urgente;
-      const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
-      return ma<mb?-1:ma>mb?1:0;
-    });
-    if(!list.length){ tbody.innerHTML='<tr class="empty-row"><td colspan="8">Nenhuma demanda encontrada.</td></tr>'; return; }
-    tbody.innerHTML = list.map(d=>`
-      <tr style="${d.urgente?'background:#fffbeb;':''}${d.resolvido?'opacity:.45;':''}">
-        <td style="text-align:center;">
-          <input type="checkbox" class="cb-check" ${d.resolvido?'checked':''} onchange="toggleResolvido(${d.id},this.checked)">
-          <div style="font-size:9px;color:var(--texto2);margin-top:1px;">${d.resolvido?'Sim':'Não'}</div>
-        </td>
-        <td style="text-align:center;">
-          <input type="checkbox" class="cb-check" ${d.urgente?'checked':''} onchange="toggleUrgente(${d.id},this.checked)" style="accent-color:var(--vermelho);">
-          <div style="font-size:9px;color:${d.urgente?'#991b1b':'var(--texto2)'};margin-top:1px;">${d.urgente?'⚠️':'—'}</div>
-        </td>
-        <td><button class="sei-code" onclick="abrirDetalhe(${d.id})">${d.sei||'(sem processo)'}</button></td>
-        <td style="white-space:nowrap;font-size:11px;">${d.municipio||'—'}</td>
-        <td><span class="badge ${tpClass(d.tipo)}">${d.tipo||'Outros'}</span></td>
-        <td><div class="desc-cell">${d.desc}</div></td>
-        <td><span class="badge ${stClass(d.status)}">${d.status}</span></td>
-        <td style="white-space:nowrap;">
-          <button class="btn-act" onclick="openModal(${d.id})" title="Editar">✏️</button>
-          <button class="btn-act" onclick="delD(${d.id})" title="Excluir">🗑️</button>
-          <button class="btn-act" onclick="abrirDetalhe(${d.id})" title="Mensagens">💬${d.msgs&&d.msgs.length?`<span style="font-size:9px;background:var(--azul2);color:#fff;border-radius:8px;padding:0 4px;margin-left:1px;">${d.msgs.length}</span>`:''}</button>
-        </td>
-      </tr>`).join('');
-  }catch(e){}
-}
-
-function _startFirebase(){
-  const FB_CONFIG = {
-    apiKey: "AIzaSyDND_aY5ahlpijmMjGy7yIv58ccUDzowog",
-    authDomain: "gobre-ssp.firebaseapp.com",
-    databaseURL: "https://gobre-ssp-default-rtdb.firebaseio.com",
-    projectId: "gobre-ssp"
-  };
-  if(!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
-  db = firebase.database();
-  REF = db.ref('gobre/demandas');
-  REF_ID = db.ref('gobre/nextId');
-
-  db.ref('.info/connected').on('value', s => {
-    const el = document.getElementById('badge-salvo');
-    if(!el) return;
-    if(s.val()===true){ el.textContent='🟢 Conectado'; el.style.color='#10b981'; el.style.display='inline'; }
-    else { el.textContent='🔴 Offline'; el.style.color='#ef4444'; el.style.display='inline'; }
-  });
-
-  REF.on('value', snap => {
-    const val = snap.val();
-    if(val && Object.keys(val).length > 0){
-      demandas = Object.values(val).sort((a,b)=>{
-        const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
-        return ma<mb?-1:ma>mb?1:0;
-      });
-      _atualizarTela();
-    } else {
-      const obj={};
-      DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]={...d}; });
-      REF.set(obj); REF_ID.set(43);
-    }
-  });
-  REF_ID.on('value', snap => { if(snap.val()) nextId = snap.val(); });
-}
-
 function initFirebase(){
-  if(window._fbLoaded){ _startFirebase(); }
-  else { window._fbReadyCallback = _startFirebase; }
+  if(typeof firebase==='undefined'){
+    // Firebase ainda não carregou, tentar novamente em 500ms
+    setTimeout(initFirebase, 500);
+    return;
+  }
+  try{
+    if(!firebase.apps.length){
+      firebase.initializeApp({
+        apiKey:"AIzaSyDND_aY5ahlpijmMjGy7yIv58ccUDzowog",
+        authDomain:"gobre-ssp.firebaseapp.com",
+        databaseURL:"https://gobre-ssp-default-rtdb.firebaseio.com",
+        projectId:"gobre-ssp"
+      });
+    }
+    db  = firebase.database();
+    REF = db.ref('gobre/demandas');
+    REF_ID = db.ref('gobre/nextId');
+
+    db.ref('.info/connected').on('value', s=>{
+      const el=document.getElementById('badge-salvo');
+      if(!el) return;
+      if(s.val()===true){el.textContent='🟢 Conectado';el.style.color='#10b981';el.style.display='inline';}
+      else{el.textContent='🔴 Offline';el.style.color='#ef4444';el.style.display='inline';}
+    });
+
+    REF.on('value', snap=>{
+      const val=snap.val();
+      if(val && Object.keys(val).length>0){
+        demandas=Object.values(val).sort((a,b)=>{
+          const ma=(a.municipio||'').toLowerCase(),mb=(b.municipio||'').toLowerCase();
+          return ma<mb?-1:ma>mb?1:0;
+        });
+      } else {
+        const obj={};DEMANDAS_INICIAIS.forEach(d=>{obj[d.id]={...d};});
+        REF.set(obj);REF_ID.set(43);
+      }
+      renderDashboard();
+      renderTabela();
+    });
+
+    REF_ID.on('value', snap=>{ if(snap.val()) nextId=snap.val(); });
+  }catch(e){ console.error('Firebase:',e); }
 }
 
 // Salvar no Firebase
@@ -550,23 +503,12 @@ function salvar(){
 }
 
 function resetarDados(){
-  if(confirm('⚠️ Isso vai apagar TODOS os dados e voltar ao original para TODOS os dispositivos.\nTem certeza?')){
-    if(!REF){alert('Firebase não conectado. Aguarde e tente de novo.');return;}
-    const obj={};
-    DEMANDAS_INICIAIS.forEach(d=>{obj[d.id]={...d};});
-    REF.set(obj).then(()=>{REF_ID.set(43);alert('✅ Dados carregados! A tabela será atualizada.');}).catch(e=>alert('Erro: '+e.message));
-  }
+  if(!confirm('⚠️ Apagar TODOS os dados para TODOS os dispositivos?')) return;
+  if(!REF){alert('Aguarde a conexão.');return;}
+  const obj={};DEMANDAS_INICIAIS.forEach(d=>{obj[d.id]={...d};});
+  REF.set(obj);REF_ID.set(43);
 }
 
-function carregarSeVazio(){
-  if(!REF){setTimeout(carregarSeVazio,1000);return;}
-  REF.once('value').then(snap=>{
-    if(!snap.val()||Object.keys(snap.val()).length===0){
-      const obj={};DEMANDAS_INICIAIS.forEach(d=>{obj[d.id]={...d};});
-      REF.set(obj);REF_ID.set(43);
-    }
-  });
-}
 
 const today=()=>new Date().toISOString().slice(0,10);
 function fmtDate(d){if(!d)return'—';const[y,m,dia]=d.split('-');return`${dia}/${m}/${y}`;}
@@ -580,7 +522,7 @@ function showTab(tab){
   document.getElementById('view-lista').classList.toggle('active',tab==='lista');
   document.getElementById('view-detalhe').style.display='none';
   if(tab==='dashboard') renderDashboard();
-  if(tab==='lista') setTimeout(renderTabela, 50);
+  if(tab==='lista') renderTabela();
 }
 
 function renderCards(){
@@ -960,8 +902,7 @@ function tentarLogin(){
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';
     sessionStorage.setItem('auth','1');
-    if(!db) initFirebase(); // só inicia se ainda não iniciou
-    renderDashboard();
+    initFirebase();
   }else{
     const el=document.getElementById('login-erro');
     el.textContent='Senha incorreta. Tente novamente.';
@@ -972,21 +913,11 @@ function tentarLogin(){
 
 window.addEventListener('DOMContentLoaded', function(){
   document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
-  // Sempre inicia o Firebase assim que a página carrega
-  // para garantir sincronização mesmo sem novo login
-  window._fbReadyCallback = function(){
-    _startFirebase();
-    if(sessionStorage.getItem('auth')==='1'){
-      document.getElementById('login-screen').style.display='none';
-      document.getElementById('app').style.display='block';
-      renderDashboard();
-    }
-  };
-  // Se Firebase já carregou, inicia imediatamente
-  if(window._fbLoaded){
-    window._fbReadyCallback();
+  if(sessionStorage.getItem('auth')==='1'){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+    initFirebase();
   }
-  // Caso contrário, o callback já está registrado e será chamado quando carregar
 });
 </script>
 </div>
