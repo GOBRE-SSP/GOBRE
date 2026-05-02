@@ -485,23 +485,24 @@ function _startFirebase(){
 
   REF.on('value', snap => {
     const val = snap.val();
-    if(val){
+    if(val && Object.keys(val).length > 0){
       demandas = Object.values(val).sort((a,b)=>{
         const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
         return ma<mb?-1:ma>mb?1:0;
       });
-      // Renderiza dashboard sempre; tabela só se a aba estiver ativa
-      try{ renderDashboard(); }catch(e){}
-      const listaAtiva = document.getElementById('view-lista') && 
-                         document.getElementById('view-lista').classList.contains('active');
-      if(listaAtiva){ try{ renderTabela(); }catch(e){} }
+      _fbIniciado = true;
+      // Atualiza tudo após dados chegarem
+      setTimeout(function(){
+        try{ renderDashboard(); }catch(e){ console.log('dash err',e); }
+        try{ renderTabela(); }catch(e){ console.log('tab err',e); }
+      }, 100);
     } else {
       // Banco vazio — sobe dados iniciais automaticamente
       const obj={};
       DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]={...d}; });
       REF.set(obj); REF_ID.set(43);
+      _fbIniciado = true;
     }
-    _fbIniciado = true;
   });
   REF_ID.on('value', snap => { if(snap.val()) nextId = snap.val(); });
   // Garante carregamento se banco vazio
@@ -556,8 +557,8 @@ function showTab(tab){
   document.getElementById('view-dashboard').classList.toggle('active',tab==='dashboard');
   document.getElementById('view-lista').classList.toggle('active',tab==='lista');
   document.getElementById('view-detalhe').style.display='none';
-  if(tab==='dashboard')renderDashboard();
-  if(tab==='lista'){ renderTabela(); }
+  if(tab==='dashboard') renderDashboard();
+  if(tab==='lista') setTimeout(renderTabela, 50);
 }
 
 function renderCards(){
