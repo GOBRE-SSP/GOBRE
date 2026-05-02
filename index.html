@@ -295,13 +295,15 @@ tbody tr:hover td{background:#f0f7ff;}
     </select>
     <button class="btn-nova" onclick="openModal()">＋ Nova Demanda</button>
     <button class="btn-nova" onclick="openImport()" style="background:#059669;">📥 Importar Planilha</button>
+    <button class="btn-nova" onclick="resetarDados()" style="background:#64748b;font-size:11px;padding:7px 12px;" title="Apagar todos os dados e voltar ao original">🔄 Resetar</button>
+    <span id="badge-salvo" style="font-size:11px;color:#10b981;font-weight:700;display:none;">✓ Salvo</span>
   </div>
   <p class="scroll-hint">👆 Role a tabela para os lados para ver mais informações</p>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>Resolvido</th><th>Urgência</th><th>Nº Processo</th><th>Município</th><th>Demanda</th><th>Status</th><th>Ações</th>
+          <th>Resolvido</th><th>Urgência</th><th>Nº Processo</th><th>Município</th><th>Tipo</th><th>Demanda</th><th>Status</th><th>Ações</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -394,7 +396,7 @@ tbody tr:hover td{background:#f0f7ff;}
 </div>
 
 <script>
-let demandas=[
+const DEMANDAS_INICIAIS=[
   {id:1,sei:'00027.002315/2021-26',tipo:'MP',sol:'DPMA',municipio:'Teresina',desc:'DPMA - Adequação das instalações físicas da unidade',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
   {id:2,sei:'00027.002315/2021-26',tipo:'MP',sol:'25º DP',municipio:'Teresina',desc:'25º DP - Melhorias na estrutura física, mobília, equipamentos e efetivo policial',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
   {id:3,sei:'',tipo:'MP',sol:'8ª DRP',municipio:'São Raimundo Nonato',desc:'8ª DRP - Fomentar melhorias na estrutura física, de trabalho e condições higiênico-sanitárias',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
@@ -436,7 +438,33 @@ let demandas=[
   {id:39,sei:'00019.034704/2025-43',tipo:'Manutenção Predial',sol:'UISP Elesbão Veloso',municipio:'Elesbão Veloso',desc:'UISP Elesbão Veloso - manutenção corretiva da fossa séptica',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
   {id:40,sei:'00028.011354/2026-19',tipo:'Ar Condicionado',sol:'29º BPM',municipio:'Teresina',desc:'29º BPM - aparelho de ar-condicionado da recepção do quartel não está funcionando',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]}
 ];
-let nextId=41,editId=null,detalheId=null;
+// ── PERSISTÊNCIA localStorage ────────────────────────────
+function salvar(){
+  try{
+    localStorage.setItem('gobre_demandas',JSON.stringify(demandas));
+    localStorage.setItem('gobre_nextid',String(nextId));
+    const b=document.getElementById('badge-salvo');
+    if(b){b.style.display='inline';clearTimeout(b._t);b._t=setTimeout(()=>b.style.display='none',2000);}
+  }catch(e){}
+}
+function resetarDados(){
+  if(confirm('⚠️ Isso vai apagar TODOS os dados editados e voltar ao original.\nTem certeza?')){
+    localStorage.removeItem('gobre_demandas');
+    localStorage.removeItem('gobre_nextid');
+    location.reload();
+  }
+}
+function carregar(){
+  try{
+    const s=localStorage.getItem('gobre_demandas');
+    const n=localStorage.getItem('gobre_nextid');
+    if(s){const arr=JSON.parse(s);if(arr&&arr.length)return{demandas:arr,nextId:n?parseInt(n):arr.reduce((m,d)=>Math.max(m,d.id),0)+1};}
+  }catch(e){}
+  return null;
+}
+const _saved=carregar();
+let demandas=_saved?_saved.demandas:DEMANDAS_INICIAIS.map(d=>({...d}));
+let nextId=_saved?_saved.nextId:41,editId=null,detalheId=null;
 
 const today=()=>new Date().toISOString().slice(0,10);
 function fmtDate(d){if(!d)return'—';const[y,m,dia]=d.split('-');return`${dia}/${m}/${y}`;}
@@ -563,7 +591,7 @@ function renderTabela(){
     return txt.includes(q)&&(!fst||d.status===fst)&&(!ftp||d.tipo===ftp)&&(!fpr||d.prio===fpr);
   }).sort((a,b)=>{if(b.urgente!==a.urgente)return b.urgente-a.urgente;const ma=(a.municipio||"").toLowerCase(),mb=(b.municipio||"").toLowerCase();return ma<mb?-1:ma>mb?1:0;});
   const tbody=document.getElementById('tbody');
-  if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhuma demanda encontrada.</td></tr>';return;}
+  if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="8">Nenhuma demanda encontrada.</td></tr>';return;}
   tbody.innerHTML=list.map(d=>`
     <tr style="${d.urgente?'background:#fffbeb;':''}${d.resolvido?'opacity:.45;':''}">
       <td style="text-align:center;">
@@ -576,6 +604,7 @@ function renderTabela(){
       </td>
       <td><button class="sei-code" onclick="abrirDetalhe(${d.id})">${d.sei||'(sem processo)'}</button></td>
       <td style="white-space:nowrap;font-size:11px;">${d.municipio||'—'}</td>
+      <td><span class="badge ${tpClass(d.tipo)}">${d.tipo||'Outros'}</span></td>
       <td><div class="desc-cell">${d.desc}</div></td>
       <td><span class="badge ${stClass(d.status)}">${d.status}</span></td>
       <td style="white-space:nowrap;">
@@ -586,8 +615,8 @@ function renderTabela(){
     </tr>`).join('');
 }
 
-function toggleResolvido(id,v){demandas=demandas.map(d=>d.id===id?{...d,resolvido:v?1:0}:d);renderTabela();}
-function toggleUrgente(id,v){demandas=demandas.map(d=>d.id===id?{...d,urgente:v?1:0}:d);renderTabela();}
+function toggleResolvido(id,v){demandas=demandas.map(d=>d.id===id?{...d,resolvido:v?1:0}:d);salvar();renderTabela();}
+function toggleUrgente(id,v){demandas=demandas.map(d=>d.id===id?{...d,urgente:v?1:0}:d);salvar();renderTabela();}
 
 function abrirDetalhe(id){
   detalheId=id;
@@ -631,6 +660,7 @@ function enviarMensagem(){
   if(!texto)return;
   const msg={texto,autor:document.getElementById('msg-autor').value.trim()||'Equipe',alerta:document.getElementById('msg-alerta').checked,ts:Date.now()};
   demandas=demandas.map(d=>d.id===detalheId?{...d,msgs:[...d.msgs,msg]}:d);
+  salvar();
   document.getElementById('msg-texto').value='';
   document.getElementById('msg-alerta').checked=false;
   renderHistorico(demandas.find(x=>x.id===detalheId));
@@ -674,9 +704,9 @@ function save(){
     status:document.getElementById('f-st2').value,urgente:document.getElementById('f-urgente').value==='1'?1:0,
     resolvido:prev.resolvido||0,msgs:prev.msgs||[]};
   if(editId)demandas=demandas.map(x=>x.id===editId?d:x);else demandas.push(d);
-  closeModal();renderTabela();
+  salvar();closeModal();renderTabela();
 }
-function delD(id){if(confirm('Deseja excluir esta demanda?')){demandas=demandas.filter(x=>x.id!==id);renderTabela();}}
+function delD(id){if(confirm('Deseja excluir esta demanda?')){demandas=demandas.filter(x=>x.id!==id);salvar();renderTabela();}}
 
 // ── ORDENAÇÃO POR MUNICÍPIO ──────────────────────────────
 function ordenarPorMunicipio(lista) {
@@ -819,6 +849,7 @@ function confirmarImport(){
   });
   // Ordenar por município
   demandas=ordenarPorMunicipio(demandas);
+  salvar();
   closeImport();
   showTab('lista');
   renderTabela();
@@ -849,4 +880,3 @@ document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('p
 </div>
 </body>
 </html>
-
