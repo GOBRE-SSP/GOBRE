@@ -93,7 +93,14 @@ header{background:var(--azul);padding:0 22px;height:56px;display:flex;align-item
 
 /* TABELA */
 .scroll-hint{display:none;text-align:center;font-size:11px;color:var(--texto2);padding:2px 0 7px;}
-.table-wrap{background:#fff;border-radius:13px;box-shadow:0 1px 6px rgba(0,0,0,.07);overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.table-wrap{background:#fff;border-radius:13px;box-shadow:0 1px 6px rgba(0,0,0,.07);overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:calc(100vh - 220px);min-height:200px;}
+/* Scrollbar sempre visível */
+.table-wrap::-webkit-scrollbar{height:8px;width:8px;}
+.table-wrap::-webkit-scrollbar-track{background:#f1f5f9;border-radius:10px;}
+.table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:10px;}
+.table-wrap::-webkit-scrollbar-thumb:hover{background:#64748b;}
+/* Cabeçalho da tabela fixo */
+.table-wrap thead{position:sticky;top:0;z-index:10;}
 table{width:max-content;min-width:100%;border-collapse:collapse;}
 thead{background:var(--azul);}
 th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.85);white-space:nowrap;}
@@ -201,7 +208,7 @@ tbody tr:hover td{background:#f0f7ff;}
   .toolbar select{flex:1;font-size:13px;padding:9px 8px;}
   .btn-nova{width:100%;text-align:center;}
   .scroll-hint{display:block;}
-  .table-wrap{border-radius:10px;}
+  .table-wrap{border-radius:10px;max-height:calc(100vh - 180px);}
   th{font-size:9px;padding:8px 9px;} td{font-size:11px;padding:8px 9px;}
   .desc-cell{min-width:150px;max-width:200px;}
   .modal{padding:18px 14px 16px;border-radius:18px 18px 0 0;position:fixed;bottom:0;left:0;right:0;max-width:100%;max-height:88vh;width:100%;}
@@ -294,9 +301,7 @@ tbody tr:hover td{background:#f0f7ff;}
     <table>
       <thead>
         <tr>
-          <th>Resolvido</th><th>Urgência</th><th>Tipo</th>
-          <th>Nº Processo</th><th>Demanda</th><th>Município</th>
-          <th>Responsável</th><th>Prazo</th><th>Status</th><th>Ações</th>
+          <th>Resolvido</th><th>Urgência</th><th>Nº Processo</th><th>Município</th><th>Demanda</th><th>Status</th><th>Ações</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -558,7 +563,7 @@ function renderTabela(){
     return txt.includes(q)&&(!fst||d.status===fst)&&(!ftp||d.tipo===ftp)&&(!fpr||d.prio===fpr);
   }).sort((a,b)=>{if(b.urgente!==a.urgente)return b.urgente-a.urgente;const ma=(a.municipio||"").toLowerCase(),mb=(b.municipio||"").toLowerCase();return ma<mb?-1:ma>mb?1:0;});
   const tbody=document.getElementById('tbody');
-  if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="10">Nenhuma demanda encontrada.</td></tr>';return;}
+  if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhuma demanda encontrada.</td></tr>';return;}
   tbody.innerHTML=list.map(d=>`
     <tr style="${d.urgente?'background:#fffbeb;':''}${d.resolvido?'opacity:.45;':''}">
       <td style="text-align:center;">
@@ -569,12 +574,9 @@ function renderTabela(){
         <input type="checkbox" class="cb-check" ${d.urgente?'checked':''} onchange="toggleUrgente(${d.id},this.checked)" style="accent-color:var(--vermelho);">
         <div style="font-size:9px;color:${d.urgente?'#991b1b':'var(--texto2)'};margin-top:1px;">${d.urgente?'⚠️':'—'}</div>
       </td>
-      <td><span class="badge ${tpClass(d.tipo)}">${d.tipo}</span></td>
       <td><button class="sei-code" onclick="abrirDetalhe(${d.id})">${d.sei||'(sem processo)'}</button></td>
-      <td><div class="desc-cell">${d.desc}</div></td>
       <td style="white-space:nowrap;font-size:11px;">${d.municipio||'—'}</td>
-      <td style="font-size:11px;white-space:nowrap;">${d.resp||'—'}</td>
-      <td style="font-size:11px;white-space:nowrap;">${fmtDate(d.prazo)}</td>
+      <td><div class="desc-cell">${d.desc}</div></td>
       <td><span class="badge ${stClass(d.status)}">${d.status}</span></td>
       <td style="white-space:nowrap;">
         <button class="btn-act" onclick="openModal(${d.id})" title="Editar">✏️</button>
@@ -847,3 +849,4 @@ document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('p
 </div>
 </body>
 </html>
+
