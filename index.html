@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE htmla>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -490,7 +490,9 @@ function _startFirebase(){
         const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
         return ma<mb?-1:ma>mb?1:0;
       });
-      if(_fbIniciado){ renderTabela(); renderDashboard(); }
+      // Sempre renderiza dashboard e tabela quando dados chegam do Firebase
+      try{ renderDashboard(); }catch(e){}
+      try{ renderTabela(); }catch(e){}
     } else {
       // Banco vazio — sobe dados iniciais automaticamente
       const obj={};
@@ -964,7 +966,7 @@ window.addEventListener('DOMContentLoaded', function(){
   if(window._fbLoaded){
     window._fbReadyCallback();
   }
-  // Caso contrário, o callback já está registrado e será chamado quando carregara
+  // Caso contrário, o callback já está registrado e será chamado quando carregar
 });
 </script>
 </div>
