@@ -462,7 +462,42 @@ const DEMANDAS_INICIAIS=[
 let db, REF, REF_ID;
 let demandas = DEMANDAS_INICIAIS.map(d=>({...d}));
 let nextId = 43, editId = null, detalheId = null;
-let _fbIniciado = false;
+
+function _atualizarTela(){
+  try{ renderDashboard(); }catch(e){}
+  // Sempre popula o tbody, independente de qual aba está visível
+  try{
+    const tbody = document.getElementById('tbody');
+    if(!tbody) return;
+    const list = demandas.slice().sort((a,b)=>{
+      if(b.urgente!==a.urgente) return b.urgente-a.urgente;
+      const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
+      return ma<mb?-1:ma>mb?1:0;
+    });
+    if(!list.length){ tbody.innerHTML='<tr class="empty-row"><td colspan="8">Nenhuma demanda encontrada.</td></tr>'; return; }
+    tbody.innerHTML = list.map(d=>`
+      <tr style="${d.urgente?'background:#fffbeb;':''}${d.resolvido?'opacity:.45;':''}">
+        <td style="text-align:center;">
+          <input type="checkbox" class="cb-check" ${d.resolvido?'checked':''} onchange="toggleResolvido(${d.id},this.checked)">
+          <div style="font-size:9px;color:var(--texto2);margin-top:1px;">${d.resolvido?'Sim':'Não'}</div>
+        </td>
+        <td style="text-align:center;">
+          <input type="checkbox" class="cb-check" ${d.urgente?'checked':''} onchange="toggleUrgente(${d.id},this.checked)" style="accent-color:var(--vermelho);">
+          <div style="font-size:9px;color:${d.urgente?'#991b1b':'var(--texto2)'};margin-top:1px;">${d.urgente?'⚠️':'—'}</div>
+        </td>
+        <td><button class="sei-code" onclick="abrirDetalhe(${d.id})">${d.sei||'(sem processo)'}</button></td>
+        <td style="white-space:nowrap;font-size:11px;">${d.municipio||'—'}</td>
+        <td><span class="badge ${tpClass(d.tipo)}">${d.tipo||'Outros'}</span></td>
+        <td><div class="desc-cell">${d.desc}</div></td>
+        <td><span class="badge ${stClass(d.status)}">${d.status}</span></td>
+        <td style="white-space:nowrap;">
+          <button class="btn-act" onclick="openModal(${d.id})" title="Editar">✏️</button>
+          <button class="btn-act" onclick="delD(${d.id})" title="Excluir">🗑️</button>
+          <button class="btn-act" onclick="abrirDetalhe(${d.id})" title="Mensagens">💬${d.msgs&&d.msgs.length?`<span style="font-size:9px;background:var(--azul2);color:#fff;border-radius:8px;padding:0 4px;margin-left:1px;">${d.msgs.length}</span>`:''}</button>
+        </td>
+      </tr>`).join('');
+  }catch(e){}
+}
 
 function _startFirebase(){
   const FB_CONFIG = {
@@ -490,32 +525,19 @@ function _startFirebase(){
         const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
         return ma<mb?-1:ma>mb?1:0;
       });
-      _fbIniciado = true;
-      // Atualiza tudo após dados chegarem
-      setTimeout(function(){
-        try{ renderDashboard(); }catch(e){ console.log('dash err',e); }
-        try{ renderTabela(); }catch(e){ console.log('tab err',e); }
-      }, 100);
+      _atualizarTela();
     } else {
-      // Banco vazio — sobe dados iniciais automaticamente
       const obj={};
       DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]={...d}; });
       REF.set(obj); REF_ID.set(43);
-      _fbIniciado = true;
     }
   });
   REF_ID.on('value', snap => { if(snap.val()) nextId = snap.val(); });
-  // Garante carregamento se banco vazio
-  setTimeout(()=>{ if(typeof carregarSeVazio==='function') carregarSeVazio(); }, 2000);
 }
 
 function initFirebase(){
-  if(window._fbLoaded){
-    _startFirebase();
-  } else {
-    // Firebase ainda carregando — aguarda e tenta de novo
-    window._fbReadyCallback = _startFirebase;
-  }
+  if(window._fbLoaded){ _startFirebase(); }
+  else { window._fbReadyCallback = _startFirebase; }
 }
 
 // Salvar no Firebase
@@ -662,31 +684,21 @@ function renderDashboard() {
 }
 
 function renderTabela(){
-  const buscaEl=document.getElementById('busca');
-  const fstEl=document.getElementById('f-status');
-  const ftpEl=document.getElementById('f-tipo');
-  const fprEl=document.getElementById('f-prio');
   const tbody=document.getElementById('tbody');
-  if(!tbody) return; // elemento não existe ainda
-  const q=buscaEl?buscaEl.value.toLowerCase():'';
-  const fst=fstEl?fstEl.value:'';
-  const ftp=ftpEl?ftpEl.value:'';
-  const fpr=fprEl?fprEl.value:'';
-  let list=demandas.filter(d=>{
+  if(!tbody) return;
+  const q=(document.getElementById('busca')||{value:''}).value.toLowerCase();
+  const fst=(document.getElementById('f-status')||{value:''}).value;
+  const ftp=(document.getElementById('f-tipo')||{value:''}).value;
+  const fpr=(document.getElementById('f-prio')||{value:''}).value;
+  const list=demandas.filter(d=>{
     const txt=(d.sei+d.sol+d.desc+(d.municipio||'')).toLowerCase();
     return txt.includes(q)&&(!fst||d.status===fst)&&(!ftp||d.tipo===ftp)&&(!fpr||d.prio===fpr);
-  }).sort((a,b)=>{if(b.urgente!==a.urgente)return b.urgente-a.urgente;const ma=(a.municipio||"").toLowerCase(),mb=(b.municipio||"").toLowerCase();return ma<mb?-1:ma>mb?1:0;});
+  }).sort((a,b)=>{if(b.urgente!==a.urgente)return b.urgente-a.urgente;const ma=(a.municipio||'').toLowerCase(),mb=(b.municipio||'').toLowerCase();return ma<mb?-1:ma>mb?1:0;});
   if(!list.length){tbody.innerHTML='<tr class="empty-row"><td colspan="8">Nenhuma demanda encontrada.</td></tr>';return;}
   tbody.innerHTML=list.map(d=>`
     <tr style="${d.urgente?'background:#fffbeb;':''}${d.resolvido?'opacity:.45;':''}">
-      <td style="text-align:center;">
-        <input type="checkbox" class="cb-check" ${d.resolvido?'checked':''} onchange="toggleResolvido(${d.id},this.checked)">
-        <div style="font-size:9px;color:var(--texto2);margin-top:1px;">${d.resolvido?'Sim':'Não'}</div>
-      </td>
-      <td style="text-align:center;">
-        <input type="checkbox" class="cb-check" ${d.urgente?'checked':''} onchange="toggleUrgente(${d.id},this.checked)" style="accent-color:var(--vermelho);">
-        <div style="font-size:9px;color:${d.urgente?'#991b1b':'var(--texto2)'};margin-top:1px;">${d.urgente?'⚠️':'—'}</div>
-      </td>
+      <td style="text-align:center;"><input type="checkbox" class="cb-check" ${d.resolvido?'checked':''} onchange="toggleResolvido(${d.id},this.checked)"><div style="font-size:9px;color:var(--texto2);margin-top:1px;">${d.resolvido?'Sim':'Não'}</div></td>
+      <td style="text-align:center;"><input type="checkbox" class="cb-check" ${d.urgente?'checked':''} onchange="toggleUrgente(${d.id},this.checked)" style="accent-color:var(--vermelho);"><div style="font-size:9px;color:${d.urgente?'#991b1b':'var(--texto2)'};margin-top:1px;">${d.urgente?'⚠️':'—'}</div></td>
       <td><button class="sei-code" onclick="abrirDetalhe(${d.id})">${d.sei||'(sem processo)'}</button></td>
       <td style="white-space:nowrap;font-size:11px;">${d.municipio||'—'}</td>
       <td><span class="badge ${tpClass(d.tipo)}">${d.tipo||'Outros'}</span></td>
@@ -695,7 +707,7 @@ function renderTabela(){
       <td style="white-space:nowrap;">
         <button class="btn-act" onclick="openModal(${d.id})" title="Editar">✏️</button>
         <button class="btn-act" onclick="delD(${d.id})" title="Excluir">🗑️</button>
-        <button class="btn-act" onclick="abrirDetalhe(${d.id})" title="Mensagens">💬${d.msgs.length?`<span style="font-size:9px;background:var(--azul2);color:#fff;border-radius:8px;padding:0 4px;margin-left:1px;">${d.msgs.length}</span>`:''}</button>
+        <button class="btn-act" onclick="abrirDetalhe(${d.id})" title="Mensagens">💬${d.msgs&&d.msgs.length?`<span style="font-size:9px;background:var(--azul2);color:#fff;border-radius:8px;padding:0 4px;margin-left:1px;">${d.msgs.length}</span>`:''}</button>
       </td>
     </tr>`).join('');
 }
