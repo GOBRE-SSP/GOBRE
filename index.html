@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOBRE — Gestão de Demandas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// Carrega Firebase de forma segura garantindo ordem correta
+(function(){
+  function loadScript(src, cb){
+    var s=document.createElement('script');
+    s.src=src; s.onload=cb;
+    document.head.appendChild(s);
+  }
+  window._fbLoaded=false;
+  loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js', function(){
+    loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js', function(){
+      window._fbLoaded=true;
+      if(window._fbReadyCallback) window._fbReadyCallback();
+    });
+  });
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--azul:#1b3f72;--azul2:#2563a8;--verde:#10b981;--vermelho:#ef4444;--amarelo:#f59e0b;--roxo:#7c3aed;--cinza-bg:#f1f5f9;--borda:#dde3ec;--texto:#1a202c;--texto2:#64748b;--branco:#fff;}
@@ -436,35 +453,82 @@ const DEMANDAS_INICIAIS=[
   {id:37,sei:'',tipo:'Manutenção Predial',sol:'BOPE',municipio:'Teresina',desc:'BOPE',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
   {id:38,sei:'00027.001351/2026-87',tipo:'Manutenção Predial',sol:'Diretoria de Polícia Comunitária',municipio:'Teresina',desc:"Diretoria de Polícia Comunitária - reparos em 3 salas (Diretor, Colaboradores e Conset's)",resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
   {id:39,sei:'00019.034704/2025-43',tipo:'Manutenção Predial',sol:'UISP Elesbão Veloso',municipio:'Elesbão Veloso',desc:'UISP Elesbão Veloso - manutenção corretiva da fossa séptica',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
-  {id:40,sei:'00028.011354/2026-19',tipo:'Ar Condicionado',sol:'29º BPM',municipio:'Teresina',desc:'29º BPM - aparelho de ar-condicionado da recepção do quartel não está funcionando',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]}
+  {id:40,sei:'00028.011354/2026-19',tipo:'Ar Condicionado',sol:'29º BPM',municipio:'(verificar)',desc:'29º BPM - aparelho de ar-condicionado da recepção do quartel não está funcionando',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
+  // Laudo CBM
+  {id:41,sei:'00321017870/2025-51',tipo:'Laudo CBM',sol:'7ª Delegacia Seccional',municipio:'Teresina',desc:'7ª Delegacia Seccional - 11º DPC',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]},
+  {id:42,sei:'00321005068/2026-08',tipo:'Laudo CBM',sol:'Delegacia de Polícia Civil',municipio:'José de Freitas',desc:'Delegacia de Polícia Civil',resp:'',prazo:'',prio:'Média',status:'Aberta',urgente:0,resolvido:0,msgs:[]}
 ];
-// ── PERSISTÊNCIA localStorage ────────────────────────────
-function salvar(){
-  try{
-    localStorage.setItem('gobre_demandas',JSON.stringify(demandas));
-    localStorage.setItem('gobre_nextid',String(nextId));
-    const b=document.getElementById('badge-salvo');
-    if(b){b.style.display='inline';clearTimeout(b._t);b._t=setTimeout(()=>b.style.display='none',2000);}
-  }catch(e){}
+// ── FIREBASE — SINCRONIZAÇÃO EM TEMPO REAL ──────────────
+let db, REF, REF_ID;
+let demandas = DEMANDAS_INICIAIS.map(d=>({...d}));
+let nextId = 43, editId = null, detalheId = null;
+let _fbIniciado = false;
+
+function _startFirebase(){
+  const FB_CONFIG = {
+    apiKey: "AIzaSyDND_aY5ahlpijmMjGy7yIv58ccUDzowog",
+    authDomain: "gobre-ssp.firebaseapp.com",
+    databaseURL: "https://gobre-ssp-default-rtdb.firebaseio.com",
+    projectId: "gobre-ssp"
+  };
+  if(!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
+  db = firebase.database();
+  REF = db.ref('gobre/demandas');
+  REF_ID = db.ref('gobre/nextId');
+
+  db.ref('.info/connected').on('value', s => {
+    const el = document.getElementById('badge-salvo');
+    if(!el) return;
+    if(s.val()===true){ el.textContent='🟢 Conectado'; el.style.color='#10b981'; el.style.display='inline'; }
+    else { el.textContent='🔴 Offline'; el.style.color='#ef4444'; el.style.display='inline'; }
+  });
+
+  REF.on('value', snap => {
+    const val = snap.val();
+    if(val){
+      demandas = Object.values(val).sort((a,b)=>{
+        const ma=(a.municipio||'').toLowerCase(), mb=(b.municipio||'').toLowerCase();
+        return ma<mb?-1:ma>mb?1:0;
+      });
+      if(_fbIniciado){ renderTabela(); renderDashboard(); }
+    } else {
+      const obj={};
+      DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]=d; });
+      REF.set(obj);
+      REF_ID.set(43);
+    }
+    _fbIniciado = true;
+  });
+  REF_ID.on('value', snap => { if(snap.val()) nextId = snap.val(); });
 }
-function resetarDados(){
-  if(confirm('⚠️ Isso vai apagar TODOS os dados editados e voltar ao original.\nTem certeza?')){
-    localStorage.removeItem('gobre_demandas');
-    localStorage.removeItem('gobre_nextid');
-    location.reload();
+
+function initFirebase(){
+  if(window._fbLoaded){
+    _startFirebase();
+  } else {
+    // Firebase ainda carregando — aguarda e tenta de novo
+    window._fbReadyCallback = _startFirebase;
   }
 }
-function carregar(){
-  try{
-    const s=localStorage.getItem('gobre_demandas');
-    const n=localStorage.getItem('gobre_nextid');
-    if(s){const arr=JSON.parse(s);if(arr&&arr.length)return{demandas:arr,nextId:n?parseInt(n):arr.reduce((m,d)=>Math.max(m,d.id),0)+1};}
-  }catch(e){}
-  return null;
+
+// Salvar no Firebase
+function salvar(){
+  const obj={};
+  demandas.forEach(d=>{ obj[d.id]=d; });
+  if(REF){ REF.set(obj); REF_ID.set(nextId); }
+  const b=document.getElementById('badge-salvo');
+  if(b){b.textContent='✓ Salvo';b.style.color='#10b981';b.style.display='inline';clearTimeout(b._t);b._t=setTimeout(()=>{b.style.display='none';},2000);}
 }
-const _saved=carregar();
-let demandas=_saved?_saved.demandas:DEMANDAS_INICIAIS.map(d=>({...d}));
-let nextId=_saved?_saved.nextId:41,editId=null,detalheId=null;
+
+function resetarDados(){
+  if(confirm('⚠️ Isso vai apagar TODOS os dados e voltar ao original para TODOS os dispositivos.\nTem certeza?')){
+    const obj={};
+    DEMANDAS_INICIAIS.forEach(d=>{ obj[d.id]={...d}; });
+    REF.set(obj);
+    REF_ID.set(41);
+    alert('✅ Dados resetados! Todos os dispositivos serão atualizados.');
+  }
+}
 
 const today=()=>new Date().toISOString().slice(0,10);
 function fmtDate(d){if(!d)return'—';const[y,m,dia]=d.split('-');return`${dia}/${m}/${y}`;}
@@ -862,7 +926,9 @@ function tentarLogin(){
   if(document.getElementById('senha-input').value===SENHA){
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';
-    sessionStorage.setItem('auth','1');renderDashboard();
+    sessionStorage.setItem('auth','1');
+    initFirebase();
+    renderDashboard();
   }else{
     const el=document.getElementById('login-erro');
     el.textContent='Senha incorreta. Tente novamente.';
@@ -870,12 +936,16 @@ function tentarLogin(){
     setTimeout(()=>el.textContent='',3000);
   }
 }
-if(sessionStorage.getItem('auth')==='1'){
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app').style.display='block';
-  renderDashboard();
-}
-document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+
+window.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('hdr-date').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+  if(sessionStorage.getItem('auth')==='1'){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+    initFirebase();
+    renderDashboard();
+  }
+});
 </script>
 </div>
 </body>
