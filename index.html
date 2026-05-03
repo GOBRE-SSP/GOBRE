@@ -1,4 +1,4 @@
-<!DOCTaYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -103,11 +103,16 @@ header{background:var(--azul);padding:0 14px;padding-top:env(safe-area-inset-top
 .legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
 .alertas-card{background:#fff;border-radius:12px;padding:15px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:14px;}
 .alertas-card h3{font-size:13px;font-weight:700;color:var(--azul);margin-bottom:11px;}
-.alerta-item{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:7px;cursor:pointer;}
-.alerta-item:active{background:#fef3c7;}
-.alerta-icon{font-size:15px;flex-shrink:0;margin-top:1px;}
+.alerta-item{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:7px;}
+.alerta-item-body{flex:1;min-width:0;cursor:pointer;}
+.alerta-item-body:active{opacity:.8;}
+.alerta-icon{font-size:15px;flex-shrink:0;margin-top:2px;}
 .alerta-texto{font-size:12px;line-height:1.5;color:#78350f;}
-.alerta-texto strong{display:block;font-size:13px;color:#7c2d12;}
+.alerta-texto strong{display:block;font-size:13px;color:#7c2d12;margin-bottom:1px;}
+.alerta-sei{font-family:'DM Mono',monospace;font-size:10px;color:#92400e;font-weight:700;margin-bottom:2px;}
+.alerta-mun{font-size:11px;color:#b45309;margin-top:2px;}
+.alerta-dismiss{background:none;border:1px solid #fed7aa;border-radius:6px;color:#92400e;font-size:11px;font-weight:700;cursor:pointer;padding:4px 9px;flex-shrink:0;font-family:'DM Sans',sans-serif;white-space:nowrap;align-self:center;}
+.alerta-dismiss:active{background:#fef3c7;}
 .alerta-vazio{font-size:13px;color:var(--texto2);text-align:center;padding:14px 0;}
 
 /* TOOLBAR */
@@ -168,9 +173,7 @@ tbody tr:hover td{background:#f0f7ff;}
 .form-msg textarea:focus{border-color:var(--azul2);}
 .form-msg input[type=text]{width:100%;border:1.5px solid var(--borda);border-radius:9px;padding:10px 11px;font-size:15px;font-family:'DM Sans',sans-serif;margin-top:8px;outline:none;}
 .form-msg input[type=text]:focus{border-color:var(--azul2);}
-.msg-actions{display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:10px;}
-.msg-alerta-check{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--texto2);cursor:pointer;}
-.msg-alerta-check input{width:18px;height:18px;}
+.msg-actions{display:flex;align-items:center;justify-content:flex-end;margin-top:10px;flex-wrap:wrap;gap:10px;}
 .btn-enviar{background:var(--azul);color:#fff;border:none;border-radius:9px;padding:12px 22px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;flex:1;text-align:center;}
 .btn-enviar:active{background:#122d54;}
 .hist-vazio{text-align:center;padding:20px;color:var(--texto2);font-size:13px;}
@@ -354,9 +357,6 @@ tbody tr:hover td{background:#f0f7ff;}
     <textarea id="msg-texto" placeholder="Ex: Despacho feito, aguardando assinatura..."></textarea>
     <input type="text" id="msg-autor" placeholder="Seu nome (ex: João Silva)">
     <div class="msg-actions">
-      <label class="msg-alerta-check">
-        <input type="checkbox" id="msg-alerta"> Gerar alerta no dashboard
-      </label>
       <button class="btn-enviar" onclick="enviarMensagem()">Enviar mensagem</button>
     </div>
   </div>
@@ -557,8 +557,8 @@ function initFirebase(){
               const qtAntiga=antiga&&antiga.msgs?antiga.msgs.length:0;
               const msgsNovas=nd.msgs.slice(qtAntiga);
               msgsNovas.forEach(m=>{
-                if(m.alerta&&m.ts>ultimoAlertaTs){
-                  mostrarToast(`Nova mensagem — ${nd.sol}`,m.texto.substring(0,70)+(m.texto.length>70?'...':''),'alerta');
+                if(m.alerta&&!m.alertaDismissed&&m.ts>ultimoAlertaTs){
+                  mostrarToast(`Nova mensagem — ${nd.sei||nd.sol}`,`📍 ${nd.municipio}: ${m.texto.substring(0,60)}${m.texto.length>60?'...':''}`,'alerta');
                   ultimoAlertaTs=m.ts;
                 }
               });
@@ -636,12 +636,28 @@ function renderDashboard(){
   const baseTipo=filtroMunicipio?base.filter(d=>d.municipio===filtroMunicipio):base;
   renderTipos(baseTipo);
   const alertasUrgentes=demandas.filter(d=>d.urgente&&!d.resolvido);
-  const alertasMsgs=demandas.flatMap(d=>(d.msgs||[]).filter(m=>m.alerta).map(m=>({...m,demanda:d})));
+  // Alertas de mensagens: só as que não foram dispensadas (alertaDismissed !== true)
+  const alertasMsgs=demandas.flatMap(d=>(d.msgs||[]).filter(m=>m.alerta&&!m.alertaDismissed).map(m=>({...m,demanda:d})));
   const lista=document.getElementById('alertas-lista');
   if(!alertasUrgentes.length&&!alertasMsgs.length){lista.innerHTML='<div class="alerta-vazio">Nenhum alerta no momento.</div>';return;}
   lista.innerHTML=[
-    ...alertasUrgentes.map(d=>`<div class="alerta-item" onclick="abrirDetalhe(${d.id})"><div class="alerta-icon">🚨</div><div class="alerta-texto"><strong>${d.sol} — ${d.municipio}</strong>${d.desc}</div></div>`),
-    ...alertasMsgs.map(a=>`<div class="alerta-item" onclick="abrirDetalhe(${a.demanda.id})"><div class="alerta-icon">⚠️</div><div class="alerta-texto"><strong>${a.demanda.sol}</strong>${a.texto} — <em>${a.autor}, ${fmtDT(a.ts)}</em></div></div>`)
+    ...alertasUrgentes.map(d=>`
+      <div class="alerta-item">
+        <div class="alerta-icon">🚨</div>
+        <div class="alerta-item-body" onclick="abrirDetalhe(${d.id})">
+          <div class="alerta-texto"><strong>${d.sol} — ${d.municipio}</strong>${d.desc.substring(0,80)}${d.desc.length>80?'...':''}</div>
+        </div>
+      </div>`),
+    ...alertasMsgs.map(a=>`
+      <div class="alerta-item">
+        <div class="alerta-icon">⚠️</div>
+        <div class="alerta-item-body" onclick="abrirDetalhe(${a.demanda.id})">
+          <div class="alerta-sei">${a.demanda.sei||'(sem processo)'}</div>
+          <div class="alerta-texto"><strong>${a.demanda.sol}</strong>${a.texto.substring(0,80)}${a.texto.length>80?'...':''}</div>
+          <div class="alerta-mun">📍 ${a.demanda.municipio} · ${new Date(a.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+        <button class="alerta-dismiss" onclick="dispensarAlerta(${a.demanda.id},${a.ts})" title="Marcar como respondido">✓ Respondido</button>
+      </div>`)
   ].join('');
 }
 
@@ -669,7 +685,7 @@ function abrirDetalhe(id){
   document.getElementById('view-detalhe').style.display='block';
   document.getElementById('detalhe-header').innerHTML=`<div class="detalhe-sei">${d.sei||'(sem nº de processo)'}&nbsp;<span class="badge ${tpClass(d.tipo)}">${d.tipo}</span>${d.urgente?'&nbsp;<span class="badge" style="background:#fee2e2;color:#991b1b;">⚠️ URGENTE</span>':''}</div><div class="detalhe-titulo">${d.desc}</div><div class="detalhe-meta"><span>Município: <strong>${d.municipio||'—'}</strong></span><span>Status: <strong>${d.status}</strong></span><span>Urgente: <strong>${d.urgente?'Sim':'Não'}</strong></span><span>Responsável: <strong>${d.resp||'—'}</strong></span><span>Prazo: <strong>${fmtDate(d.prazo)}</strong></span></div>`;
   renderHistorico(d);
-  document.getElementById('msg-texto').value='';document.getElementById('msg-autor').value='';document.getElementById('msg-alerta').checked=false;
+  document.getElementById('msg-texto').value='';document.getElementById('msg-autor').value='';
   window.scrollTo(0,0);
 }
 
@@ -682,14 +698,13 @@ function renderHistorico(d){
 
 function enviarMensagem(){
   const texto=document.getElementById('msg-texto').value.trim();if(!texto)return;
-  const comAlerta=document.getElementById('msg-alerta').checked;
-  const msg={texto,autor:document.getElementById('msg-autor').value.trim()||'Equipe',alerta:comAlerta,ts:Date.now()};
+  // Toda mensagem gera alerta automaticamente
+  const msg={texto,autor:document.getElementById('msg-autor').value.trim()||'Equipe',alerta:true,alertaDismissed:false,ts:Date.now()};
   demandas=demandas.map(d=>d.id===detalheId?{...d,msgs:[...(d.msgs||[]),msg]}:d);
   salvar();
   const d=demandas.find(x=>x.id===detalheId);
-  if(comAlerta)mostrarToast('Alerta enviado',`${d.sol}: ${texto.substring(0,60)}${texto.length>60?'...':''}`,'alerta');
-  else mostrarToast('Mensagem enviada','Registrada com sucesso.','sucesso');
-  document.getElementById('msg-texto').value='';document.getElementById('msg-alerta').checked=false;
+  mostrarToast('Nova mensagem',`${d.sol} — ${d.sei||d.municipio}: ${texto.substring(0,50)}${texto.length>50?'...':''}`,'alerta');
+  document.getElementById('msg-texto').value='';
   renderHistorico(demandas.find(x=>x.id===detalheId));
 }
 
@@ -698,6 +713,17 @@ function voltarLista(){
   document.getElementById('view-lista').classList.add('active');
   document.querySelectorAll('.tab')[1].classList.add('active');
   renderTabela();
+}
+
+// Dispensa o alerta do dashboard SEM apagar do histórico
+function dispensarAlerta(demandaId, ts){
+  demandas=demandas.map(d=>{
+    if(d.id!==demandaId)return d;
+    const msgs=(d.msgs||[]).map(m=>m.ts===ts?{...m,alertaDismissed:true}:m);
+    return{...d,msgs};
+  });
+  salvar();
+  renderDashboard();
 }
 
 function openModal(id=null){
